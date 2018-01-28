@@ -1,3 +1,6 @@
 [submodule "lcd"]
 	path = lcd
 	url = ./lcd
+[submodule "uart"]
+	path = uart
+	url = ./uart

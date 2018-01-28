@@ -20,6 +20,7 @@
 #include <stdbool.h>
 
 #include "lcd/lcd.h"
+#include "uart/uart.h"
 #include "one_shot_timer.h"
 
 #define STEPPER_DDR  DDRC
@@ -153,6 +154,48 @@ char hex(uint8_t nibble) {
 	return nibble < 0xa ? '0' + nibble : 'a' + (nibble - 0xa);
 }
 
+static char *uart_poll() {
+#define STATE_SYNC 0
+#define STATE_CMD  1
+	static char cmd[16];
+	static char *p;
+	static uint8_t state;
+	uint16_t u = uart_getc();
+	char c = u & 0xff;
+
+	if (u & 0xff00) {
+		return NULL;
+	}
+
+	switch (state) {
+	case STATE_SYNC:
+		if (c != '>') {
+			break;
+		}
+		uart_putc(c);
+		state++;
+		p = cmd;
+		break;
+	default:
+		*p = c;
+		p++;
+		if (p >= cmd + sizeof(cmd)) {
+			uart_putc('!');
+			state = STATE_SYNC;
+			return NULL;
+		}
+		uart_putc(c);
+		if (c == ';') {
+			*p = '\0';
+			state = STATE_SYNC;
+			uart_puts("\r\n");
+			return cmd;
+		}
+	}
+
+	return NULL;
+}
+
 int main(void) {
 	DDRB = 1 << 5;
 	STEPPER_DDR |= (1 << STEPPER_DIR) | (1 << STEPPER_STEP);
@@ -164,6 +207,8 @@ int main(void) {
 
 	adc_init();
 
+	uart_init(UART_BAUD_SELECT(115200,F_CPU));
+
 	osp_setup(64);
 	setup_motor_counter();
 	sei();
@@ -172,6 +217,7 @@ int main(void) {
 	long int i = 0;
 	char btn;
 	uint8_t speed;
+	char *cmd;
 	while (1) {
 		btn = get_button();
 		if (btn == UP) {
@@ -206,6 +252,12 @@ int main(void) {
 			lcd_printf(" mm", um);
 			lcd_printf("%4d", speed);
 		}
+
+		cmd = uart_poll();
+		if (cmd) {
+			uart_puts(cmd);
+		}
+		_delay_ms(16);
 	}
 
 	return 0;
