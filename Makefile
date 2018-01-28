@@ -21,7 +21,7 @@ MCU = atmega328p
 TARGET = main
 
 # List C source files here. (C dependencies are automatically generated.)
-SRC = $(TARGET).c lcd/lcd.c
+SRC = $(TARGET).c lcd/lcd.c one_shot_timer.c
 
 # Programming hardware: type avrdude -c ?
 # to get a full listing.

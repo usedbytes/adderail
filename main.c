@@ -14,10 +14,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <avr/io.h>
+#include <avr/interrupt.h>
 #include <util/delay.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "lcd/lcd.h"
+#include "one_shot_timer.h"
 
 #define STEPPER_DDR  DDRC
 #define STEPPER_PORT PORTC
@@ -46,18 +49,51 @@
 
 #define UM_PER_STEP 10
 
-void motor_step(int count, char dir) {
-	if (dir) {
-		STEPPER_PORT |= (1 << STEPPER_DIR);
+volatile uint16_t __count;
+volatile bool __done;
+ISR(TIMER1_COMPA_vect) {
+	if (__count) {
+		OSP_FIRE();
+		__count--;
+	} else if (!__done) {
+		__done = true;
+	}
+}
+
+void set_motor_speed(uint8_t speed) {
+	speed = 255 - speed;
+	if (speed < 8) {
+		speed = 8;
 	}
 
-	while (count--) {
-		STEPPER_PORT |= (1 << STEPPER_STEP);
-		_delay_us(500);
-		STEPPER_PORT &= ~(1 << STEPPER_STEP);
-		_delay_us(500);
+	OCR1A = speed;
+}
+
+void setup_motor_counter(void) {
+	TCCR1B = (1 << WGM12);
+
+	OCR1A = 255;
+
+	TIMSK1 |= (1 << OCIE1A);
+	TCCR1B |= (4 << CS10);
+}
+
+void motor_step(int count, char dir) {
+	static char old_dir = 0;
+	if (dir != old_dir) {
+		old_dir = dir;
+		if (dir) {
+			STEPPER_PORT |= (1 << STEPPER_DIR);
+		} else {
+			STEPPER_PORT &= ~(1 << STEPPER_DIR);
+		}
 	}
-	STEPPER_PORT &= ~(1 << STEPPER_DIR);
+
+	cli();
+	__done = false;
+	__count = count;
+	sei();
+	while(!__done);
 }
 
 void adc_init(void)
@@ -128,9 +164,14 @@ int main(void) {
 
 	adc_init();
 
-#define UM_PER_PRESS 10
+	osp_setup(64);
+	setup_motor_counter();
+	sei();
+
+#define UM_PER_PRESS 1000
 	long int i = 0;
 	char btn;
+	uint8_t speed;
 	while (1) {
 		btn = get_button();
 		if (btn == UP) {
@@ -139,6 +180,12 @@ int main(void) {
 		} else if (btn == DOWN) {
 			move_um(-UM_PER_PRESS);
 			i -= UM_PER_PRESS;
+		} else if (btn == LEFT) {
+			speed -= 1;
+			set_motor_speed(speed);
+		} else if (btn == RIGHT) {
+			speed += 1;
+			set_motor_speed(speed);
 		}
 
 		if (btn) {
@@ -157,7 +204,7 @@ int main(void) {
 			lcd_printf(".");
 			lcd_printf("%03ld", um);
 			lcd_printf(" mm", um);
-			_delay_ms(3);
+			lcd_printf("%4d", speed);
 		}
 	}
 
