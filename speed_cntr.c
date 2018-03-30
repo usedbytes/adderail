@@ -30,6 +30,63 @@ volatile bool running;
 //! Cointains data for timer interrupt.
 speedRampData srd;
 
+/*! \brief Square root routine.
+ *
+ * sqrt routine 'grupe', from comp.sys.ibm.pc.programmer
+ * Subject: Summary: SQRT(int) algorithm (with profiling)
+ *    From: warwick@cs.uq.oz.au (Warwick Allison)
+ *    Date: Tue Oct 8 09:16:35 1991
+ *
+ *  \param x  Value to find square root of.
+ *  \return  Square root of x.
+ */
+static unsigned long sqrt_warwick(unsigned long x)
+{
+	register unsigned long xr;  // result register
+	register unsigned long q2;  // scan-bit register
+	register unsigned char f;   // flag (one bit)
+
+	xr = 0;                     // clear result
+	q2 = 0x40000000L;           // higest possible result bit
+	do
+	{
+		if((xr + q2) <= x)
+		{
+			x -= xr + q2;
+			f = 1;                  // set flag
+		}
+		else{
+			f = 0;                  // clear flag
+		}
+		xr >>= 1;
+		if(f){
+			xr += q2;               // test flag
+		}
+	} while(q2 >>= 2);          // shift twice
+	if(xr < x){
+		return xr +1;             // add for rounding
+	}
+	else{
+		return xr;
+	}
+}
+
+/*! \brief Find minimum value.
+ *
+ *  Returns the smallest value.
+ *
+ *  \return  Min(x,y).
+ */
+unsigned int min(unsigned int x, unsigned int y)
+{
+	if(x < y){
+		return x;
+	}
+	else{
+		return y;
+	}
+}
+
 /*! \brief Move the stepper motor a given number of steps.
  *
  *  Makes the stepper motor move the given number of steps.
@@ -79,7 +136,7 @@ void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, un
 		// Set accelration by calc the first (c0) step delay .
 		// step_delay = 1/tt * sqrt(2*alpha/accel)
 		// step_delay = ( tfreq*0.676/100 )*100 * sqrt( (2*alpha*10000000000) / (accel*100) )/10000
-		srd.step_delay = (T1_FREQ_148 * sqrt(A_SQ / accel))/100;
+		srd.step_delay = (T1_FREQ_148 * sqrt_warwick(A_SQ / accel))/100;
 
 		// Find out after how many steps does the speed hit the max speed limit.
 		// max_s_lim = speed^2 / (2*alpha*accel)
@@ -224,61 +281,4 @@ ISR(TIMER1_COMPA_vect)
 			break;
 	}
 	srd.step_delay = new_step_delay;
-}
-
-/*! \brief Square root routine.
- *
- * sqrt routine 'grupe', from comp.sys.ibm.pc.programmer
- * Subject: Summary: SQRT(int) algorithm (with profiling)
- *    From: warwick@cs.uq.oz.au (Warwick Allison)
- *    Date: Tue Oct 8 09:16:35 1991
- *
- *  \param x  Value to find square root of.
- *  \return  Square root of x.
- */
-static unsigned long sqrt(unsigned long x)
-{
-	register unsigned long xr;  // result register
-	register unsigned long q2;  // scan-bit register
-	register unsigned char f;   // flag (one bit)
-
-	xr = 0;                     // clear result
-	q2 = 0x40000000L;           // higest possible result bit
-	do
-	{
-		if((xr + q2) <= x)
-		{
-			x -= xr + q2;
-			f = 1;                  // set flag
-		}
-		else{
-			f = 0;                  // clear flag
-		}
-		xr >>= 1;
-		if(f){
-			xr += q2;               // test flag
-		}
-	} while(q2 >>= 2);          // shift twice
-	if(xr < x){
-		return xr +1;             // add for rounding
-	}
-	else{
-		return xr;
-	}
-}
-
-/*! \brief Find minimum value.
- *
- *  Returns the smallest value.
- *
- *  \return  Min(x,y).
- */
-unsigned int min(unsigned int x, unsigned int y)
-{
-	if(x < y){
-		return x;
-	}
-	else{
-		return y;
-	}
 }
