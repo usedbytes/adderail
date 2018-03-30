@@ -4,9 +4,7 @@
  * \brief Header file for speed_cntr.c.
  *
  * - File:               speed_cntr.h
- * - Compiler:           IAR EWAAVR 4.11A
  * - Supported devices:  All devices with a 16 bit timer can be used.
- *                       The example is written for ATmega48
  * - AppNote:            AVR446 - Linear speed control of stepper motor
  *
  * \author               Atmel Corporation: http://www.atmel.com \n
@@ -20,6 +18,7 @@
 
 #ifndef SPEED_CNTR_H
 #define SPEED_CNTR_H
+#include <stdbool.h>
 
 /*! \brief Holding data used by timer interrupt for speed ramp calculation.
  *
@@ -49,25 +48,11 @@ typedef struct {
  * Modify this according to frequency used. Because of the prescaler setting,
  * the timer1 frequency is the clock frequency divided by 8.
  */
-// Timer/Counter 1 running on 3,686MHz / 8 = 460,75kHz (2,17uS). (T1-FREQ 460750)
-#define T1_FREQ 460750
+#define T1_FREQ (F_CPU / 64)
 
 //! Number of (full)steps per round on stepper motor in use.
 #define FSPR 200
-
-#ifdef HALFSTEPS
-  #define SPR (FSPR*2)
-  #pragma message("[speed_cntr.c] *** Using Halfsteps ***")
-#endif
-#ifdef FULLSTEPS
-  #define SPR FSPR
-  #pragma message("[speed_cntr.c] *** Using Fullsteps ***")
-#endif
-#ifndef HALFSTEPS
-  #ifndef FULLSTEPS
-    #error FULLSTEPS/HALFSTEPS not defined!
-  #endif
-#endif
+#define SPR (FSPR * 16)
 
 // Maths constants. To simplify maths when calculating in speed_cntr_Move().
 #define ALPHA (2*3.14159/SPR)                    // 2*pi/spr
@@ -84,10 +69,9 @@ typedef struct {
 
 void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, unsigned int speed);
 void speed_cntr_Init_Timer1(void);
-static unsigned long sqrt(unsigned long v);
 unsigned int min(unsigned int x, unsigned int y);
 
-//! Global status flags
-extern struct GLOBAL_FLAGS status;
+//! Global status flag
+extern volatile bool running;
 
 #endif

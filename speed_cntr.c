@@ -7,9 +7,7 @@
  * correct signals to stepper motor.
  *
  * - File:               speed_cntr.c
- * - Compiler:           IAR EWAAVR 4.11A
  * - Supported devices:  All devices with a 16 bit timer can be used.
- *                       The example is written for ATmega48
  * - AppNote:            AVR446 - Linear speed control of stepper motor
  *
  * \author               Atmel Corporation: http://www.atmel.com \n
@@ -21,11 +19,13 @@
  * $Date: 2006/05/08 12:25:58 $
  *****************************************************************************/
 
-#include <ioavr.h>
-#include "global.h"
-#include "sm_driver.h"
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <stdbool.h>
 #include "speed_cntr.h"
-#include "uart.h"
+#include "one_shot_timer.h"
+
+volatile bool running;
 
 //! Cointains data for timer interrupt.
 speedRampData srd;
@@ -52,11 +52,7 @@ void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, un
 
   // Set direction from sign on step value.
   if(step < 0){
-    srd.dir = CCW;
     step = -step;
-  }
-  else{
-    srd.dir = CW;
   }
 
   // If moving only 1 step.
@@ -67,7 +63,7 @@ void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, un
     srd.run_state = DECEL;
     // Just a short delay so main() can act on 'running'.
     srd.step_delay = 1000;
-    status.running = TRUE;
+    running = true;
     OCR1A = 10;
     // Run Timer/Counter 1 with prescaler = 8.
     TCCR1B |= ((0<<CS12)|(1<<CS11)|(0<<CS10));
@@ -128,10 +124,10 @@ void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, un
 
     // Reset counter.
     srd.accel_count = 0;
-    status.running = TRUE;
+    running = true;
     OCR1A = 10;
     // Set Timer/Counter to divide clock by 8
-    TCCR1B |= ((0<<CS12)|(1<<CS11)|(0<<CS10));
+    TCCR1B |= ((0<<CS12)|(1<<CS11)|(1<<CS10));
   }
 }
 
@@ -160,8 +156,7 @@ void speed_cntr_Init_Timer1(void)
  *  A new step delay is calculated to follow wanted speed profile
  *  on basis of accel/decel parameters.
  */
-#pragma vector=TIMER1_COMPA_vect
-__interrupt void speed_cntr_TIMER1_COMPA_interrupt( void )
+ISR(TIMER1_COMPA_vect)
 {
   // Holds next delay period.
   unsigned int new_step_delay;
@@ -180,11 +175,11 @@ __interrupt void speed_cntr_TIMER1_COMPA_interrupt( void )
       rest = 0;
       // Stop Timer/Counter 1.
       TCCR1B &= ~((1<<CS12)|(1<<CS11)|(1<<CS10));
-      status.running = FALSE;
+      running = false;
       break;
 
     case ACCEL:
-      sm_driver_StepCounter(srd.dir);
+      OSP_FIRE();
       step_count++;
       srd.accel_count++;
       new_step_delay = srd.step_delay - (((2 * (long)srd.step_delay) + rest)/(4 * srd.accel_count + 1));
@@ -204,7 +199,7 @@ __interrupt void speed_cntr_TIMER1_COMPA_interrupt( void )
       break;
 
     case RUN:
-      sm_driver_StepCounter(srd.dir);
+      OSP_FIRE();
       step_count++;
       new_step_delay = srd.min_delay;
       // Chech if we should start decelration.
@@ -217,7 +212,7 @@ __interrupt void speed_cntr_TIMER1_COMPA_interrupt( void )
       break;
 
     case DECEL:
-      sm_driver_StepCounter(srd.dir);
+      OSP_FIRE();
       step_count++;
       srd.accel_count++;
       new_step_delay = srd.step_delay - (((2 * (long)srd.step_delay) + rest)/(4 * srd.accel_count + 1));
