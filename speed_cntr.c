@@ -71,22 +71,6 @@ static unsigned long sqrt_warwick(unsigned long x)
 	}
 }
 
-/*! \brief Find minimum value.
- *
- *  Returns the smallest value.
- *
- *  \return  Min(x,y).
- */
-unsigned int min(unsigned int x, unsigned int y)
-{
-	if(x < y){
-		return x;
-	}
-	else{
-		return y;
-	}
-}
-
 /*! \brief Move the stepper motor a given number of steps.
  *
  *  Makes the stepper motor move the given number of steps.
