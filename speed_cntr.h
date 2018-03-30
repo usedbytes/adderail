@@ -11,8 +11,7 @@
  *                       Support email: avr@atmel.com
  *
  * $Name: RELEASE_1_0 $
- * $Revision: 1.2 $
- * $RCSfile: speed_cntr.h,v $
+ * $Revision: 1.2 $ * $RCSfile: speed_cntr.h,v $
  * $Date: 2006/05/08 12:25:58 $
  *****************************************************************************/
 
@@ -27,20 +26,20 @@
  *  interrupt running) data is read/updated when calculating a new step_delay
  */
 typedef struct {
-  //! What part of the speed ramp we are in.
-  unsigned char run_state : 3;
-  //! Direction stepper motor should move.
-  unsigned char dir : 1;
-  //! Peroid of next timer delay. At start this value set the accelration rate.
-  unsigned int step_delay;
-  //! What step_pos to start decelaration
-  unsigned int decel_start;
-  //! Sets deceleration rate.
-  signed int decel_val;
-  //! Minimum time delay (max speed)
-  signed int min_delay;
-  //! Counter used when accelerateing/decelerateing to calculate step_delay.
-  signed int accel_count;
+	//! What part of the speed ramp we are in.
+	unsigned char run_state : 3;
+	//! Direction stepper motor should move.
+	unsigned char dir : 1;
+	//! Peroid of next timer delay. At start this value set the accelration rate.
+	unsigned int step_delay;
+	//! What step_pos to start decelaration
+	unsigned int decel_start;
+	//! Sets deceleration rate.
+	signed int decel_val;
+	//! Minimum time delay (max speed)
+	signed int min_delay;
+	//! Counter used when accelerateing/decelerateing to calculate step_delay.
+	signed int accel_count;
 } speedRampData;
 
 /*! \Brief Frequency of timer1 in [Hz].
