@@ -45,7 +45,7 @@ typedef struct {
 /*! \Brief Frequency of timer1 in [Hz].
  *
  * Modify this according to frequency used. Because of the prescaler setting,
- * the timer1 frequency is the clock frequency divided by 8.
+ * the timer1 frequency is the clock frequency divided by 64.
  */
 #define T1_FREQ (F_CPU / 64)
 
