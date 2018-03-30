@@ -84,7 +84,7 @@ static unsigned long sqrt_warwick(unsigned long x)
  *  \param decel  Decelration to use, in 0.01*rad/sec^2.
  *  \param speed  Max speed, in 0.01*rad/sec.
  */
-void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, unsigned int speed)
+void speed_cntr_Move(signed long int step, unsigned int accel, unsigned int decel, unsigned int speed)
 {
 	//! Number of steps before we hit max speed.
 	unsigned int max_s_lim;
@@ -204,7 +204,7 @@ ISR(TIMER1_COMPA_vect)
 	// Remember the last step delay used when accelrating.
 	static int last_accel_delay;
 	// Counting steps when moving.
-	static unsigned int step_count = 0;
+	static unsigned long int step_count = 0;
 	// Keep track of remainder from new_step-delay calculation to incrase accurancy
 	static unsigned int rest = 0;
 

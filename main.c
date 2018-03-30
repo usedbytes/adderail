@@ -49,13 +49,32 @@
 #define LEFT   4
 #define SELECT 5
 
-#define UM_PER_STEP 10
+#define MM_REV 4
+#define UM_REV (MM_REV * 1000)
+#define STEP_REV (200 * 16)
+#define NM_PER_STEP (((long)UM_REV * 1000) / STEP_REV)
 
-void motor_step(int count, char dir) {
-	if (dir) {
-		count = -count;
+#define MAX_SPEED (long)((long)(UM_REV) * 5)
+#define MAX_ACCEL (long)((long)(UM_REV) * 20)
+
+long speed = MAX_SPEED;
+long accel = MAX_ACCEL;
+
+long um_to_crad(long um) {
+	return (um * (long)(3.14159 * 2 * 1000)) / ((long)UM_REV * 10);
+}
+
+void motor_step(long int count, char dir) {
+	static char old_dir = -1;
+	if (dir != old_dir) {
+		old_dir = dir;
+		if (dir) {
+			STEPPER_PORT |= (1 << STEPPER_DIR);
+		} else {
+			STEPPER_PORT &= ~(1 << STEPPER_DIR);
+		}
 	}
-	speed_cntr_Move(count, 100, 100, 2500);
+	speed_cntr_Move(count, um_to_crad(accel), um_to_crad(accel), um_to_crad(speed));
 	while(running);
 }
 
@@ -95,9 +114,9 @@ static char get_button(void) {
 	}
 }
 
-static void move_um(int um) {
+static void move_um(long int um) {
 	static char old_dir = -1;
-	int steps;
+	long int steps;
 	char dir = 0;
 	if (um < 0) {
 		dir = 1;
@@ -113,10 +132,7 @@ static void move_um(int um) {
 		}
 	}
 
-	steps = um / UM_PER_STEP;
-	if (um % UM_PER_STEP >= (UM_PER_STEP >> 2)) {
-		steps += 1;
-	}
+	steps = (um * 1000) / NM_PER_STEP;
 
 	motor_step(steps, dir);
 }
@@ -185,10 +201,9 @@ int main(void) {
 	speed_cntr_Init_Timer1();
 	sei();
 
-#define UM_PER_PRESS 50000
+#define UM_PER_PRESS 10
 	long int i = 0;
 	char btn;
-	uint8_t speed;
 	char *cmd;
 	while (1) {
 		btn = get_button();
@@ -199,10 +214,8 @@ int main(void) {
 			move_um(-UM_PER_PRESS);
 			i -= UM_PER_PRESS;
 		} else if (btn == LEFT) {
-			speed -= 1;
 			//set_motor_speed(speed);
 		} else if (btn == RIGHT) {
-			speed += 1;
 			//set_motor_speed(speed);
 		}
 
@@ -222,7 +235,7 @@ int main(void) {
 			lcd_printf(".");
 			lcd_printf("%03ld", um);
 			lcd_printf(" mm", um);
-			lcd_printf("%4d", speed);
+			//lcd_printf("%4d", speed);
 		}
 
 		cmd = uart_poll();

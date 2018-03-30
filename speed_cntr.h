@@ -33,13 +33,13 @@ typedef struct {
 	//! Peroid of next timer delay. At start this value set the accelration rate.
 	unsigned int step_delay;
 	//! What step_pos to start decelaration
-	unsigned int decel_start;
+	unsigned long int decel_start;
 	//! Sets deceleration rate.
 	signed int decel_val;
 	//! Minimum time delay (max speed)
 	signed int min_delay;
 	//! Counter used when accelerateing/decelerateing to calculate step_delay.
-	signed int accel_count;
+	signed long int accel_count;
 } speedRampData;
 
 /*! \Brief Frequency of timer1 in [Hz].
@@ -66,7 +66,7 @@ typedef struct {
 #define DECEL 2
 #define RUN   3
 
-void speed_cntr_Move(signed int step, unsigned int accel, unsigned int decel, unsigned int speed);
+void speed_cntr_Move(signed long int step, unsigned int accel, unsigned int decel, unsigned int speed);
 void speed_cntr_Init_Timer1(void);
 unsigned int min(unsigned int x, unsigned int y);
 
