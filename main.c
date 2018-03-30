@@ -22,6 +22,7 @@
 #include "lcd/lcd.h"
 #include "uart/uart.h"
 #include "one_shot_timer.h"
+#include "speed_cntr.h"
 
 #define STEPPER_DDR  DDRC
 #define STEPPER_PORT PORTC
@@ -50,51 +51,12 @@
 
 #define UM_PER_STEP 10
 
-volatile uint16_t __count;
-volatile bool __done;
-ISR(TIMER1_COMPA_vect) {
-	if (__count) {
-		OSP_FIRE();
-		__count--;
-	} else if (!__done) {
-		__done = true;
-	}
-}
-
-void set_motor_speed(uint8_t speed) {
-	speed = 255 - speed;
-	if (speed < 8) {
-		speed = 8;
-	}
-
-	OCR1A = speed;
-}
-
-void setup_motor_counter(void) {
-	TCCR1B = (1 << WGM12);
-
-	OCR1A = 255;
-
-	TIMSK1 |= (1 << OCIE1A);
-	TCCR1B |= (4 << CS10);
-}
-
 void motor_step(int count, char dir) {
-	static char old_dir = 0;
-	if (dir != old_dir) {
-		old_dir = dir;
-		if (dir) {
-			STEPPER_PORT |= (1 << STEPPER_DIR);
-		} else {
-			STEPPER_PORT &= ~(1 << STEPPER_DIR);
-		}
+	if (dir) {
+		count = -count;
 	}
-
-	cli();
-	__done = false;
-	__count = count;
-	sei();
-	while(!__done);
+	speed_cntr_Move(count, 100, 100, 2500);
+	while(running);
 }
 
 void adc_init(void)
@@ -134,11 +96,21 @@ static char get_button(void) {
 }
 
 static void move_um(int um) {
+	static char old_dir = -1;
 	int steps;
 	char dir = 0;
 	if (um < 0) {
 		dir = 1;
 		um = -um;
+	}
+
+	if (dir != old_dir) {
+		old_dir = dir;
+		if (dir) {
+			STEPPER_PORT |= (1 << STEPPER_DIR);
+		} else {
+			STEPPER_PORT &= ~(1 << STEPPER_DIR);
+		}
 	}
 
 	steps = um / UM_PER_STEP;
@@ -210,10 +182,10 @@ int main(void) {
 	uart_init(UART_BAUD_SELECT(115200,F_CPU));
 
 	osp_setup(64);
-	setup_motor_counter();
+	speed_cntr_Init_Timer1();
 	sei();
 
-#define UM_PER_PRESS 1000
+#define UM_PER_PRESS 50000
 	long int i = 0;
 	char btn;
 	uint8_t speed;
@@ -228,10 +200,10 @@ int main(void) {
 			i -= UM_PER_PRESS;
 		} else if (btn == LEFT) {
 			speed -= 1;
-			set_motor_speed(speed);
+			//set_motor_speed(speed);
 		} else if (btn == RIGHT) {
 			speed += 1;
-			set_motor_speed(speed);
+			//set_motor_speed(speed);
 		}
 
 		if (btn) {

@@ -21,7 +21,7 @@ MCU = atmega328p
 TARGET = main
 
 # List C source files here. (C dependencies are automatically generated.)
-SRC = $(TARGET).c lcd/lcd.c one_shot_timer.c uart/uart.c
+SRC = $(TARGET).c lcd/lcd.c one_shot_timer.c uart/uart.c speed_cntr.c
 
 # Programming hardware: type avrdude -c ?
 # to get a full listing.
@@ -72,7 +72,7 @@ EXTRAINCDIRS =
 #  -Wall...:  warning level
 #  -Wa,...:   tell GCC to pass this to the assembler.
 #    -ahlms:  create assembler listing
-CFLAGS = -g -O$(OPT) -Werror \
+CFLAGS = -g -O$(OPT) \
 -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums \
 -Wall -Wstrict-prototypes \
 -Wa,-adhlns=$(<:.c=.lst) \
