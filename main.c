@@ -57,6 +57,8 @@
 #define MAX_SPEED (long)((long)(UM_REV) * 5)
 #define MAX_ACCEL (long)((long)(UM_REV) * 20)
 
+#define ARRAY_SIZE(_x) (sizeof(_x) / sizeof((_x)[0]))
+
 long speed = MAX_SPEED;
 long accel = MAX_ACCEL;
 
@@ -184,7 +186,222 @@ static char *uart_poll() {
 	return NULL;
 }
 
+struct rail {
+	int32_t position_um;
+	uint32_t speed_ums;
+	uint32_t accel_ums2;
+};
+
+struct rail rail = {
+	.position_um = 0,
+	.speed_ums = MAX_SPEED / 2,
+	.accel_ums2 = MAX_ACCEL / 2,
+};
+
+enum menu_item_type {
+	MENU_TYPE_MENU,
+	MENU_TYPE_U32,
+};
+
+enum unit {
+	UNIT_UM,
+	UNIT_UM_PER_SECOND,
+	UNIT_UM_PER_SECOND_PER_SECOND,
+};
+
+struct menu_item_u32 {
+	uint32_t *val;
+	uint32_t min, max, step;
+	enum unit units;
+};
+
+struct menu_item_menu {
+	uint8_t n_items;
+	struct menu_item *items;
+};
+
+struct menu_item {
+	// TODO: Progmem
+	const char *text;
+	enum menu_item_type type;
+	union {
+		struct menu_item_menu menu;
+		struct menu_item_u32 u32;
+	};
+};
+
+struct menu_item settings_menu[] = {
+	{
+		.text = "Speed",
+		.type = MENU_TYPE_U32,
+		.u32 = {
+			.val = &rail.speed_ums,
+			.min = MAX_SPEED / 16,
+			.max = MAX_SPEED,
+			.step = MAX_SPEED / 16,
+			.units = UNIT_UM_PER_SECOND,
+		},
+	},
+	{
+		.text = "Acceleration",
+		.type = MENU_TYPE_U32,
+		.u32 = {
+			.val = &rail.accel_ums2,
+			.min = MAX_ACCEL / 16,
+			.max = MAX_ACCEL,
+			.step = MAX_ACCEL / 16,
+			.units = UNIT_UM_PER_SECOND_PER_SECOND,
+		},
+	},
+};
+
+struct menu_item stack_menu[] = {
+	{
+		.text = "Run",
+		.type = MENU_TYPE_U32,
+	},
+	{
+		.text = "# Steps",
+		.type = MENU_TYPE_U32,
+	},
+	{
+		.text = "Step Dist.",
+		.type = MENU_TYPE_U32,
+	},
+	{
+		.text = "Pause Time",
+		.type = MENU_TYPE_U32,
+	},
+};
+
+struct menu_item main_menu[] = {
+	{
+		.text="Stack",
+		.type = MENU_TYPE_MENU,
+		.menu = {
+			.n_items = ARRAY_SIZE(stack_menu),
+			.items = stack_menu,
+		},
+	},
+	{
+		.text="Settings",
+		.type = MENU_TYPE_MENU,
+		.menu = {
+			.n_items = ARRAY_SIZE(settings_menu),
+			.items = settings_menu,
+		},
+	},
+};
+
+struct menu_item menu_start = {
+	.text = "Main Menu",
+	.type = MENU_TYPE_MENU,
+	.menu = {
+		.n_items = ARRAY_SIZE(main_menu),
+		.items = main_menu,
+	},
+};
+
+#define MENU_MAX_DEPTH 4
+
+struct menu {
+	struct menu_item *stack[MENU_MAX_DEPTH];
+	struct menu_item *current;
+	uint8_t idx[MENU_MAX_DEPTH];
+	uint8_t depth;
+};
+
+void menu_init(struct menu *m, struct menu_item *entry)
+{
+	m->stack[0] = entry;
+	m->idx[0] = 0;
+	m->depth = 0;
+
+	m->current = &entry->menu.items[0];
+}
+
+void menu_show(struct menu *m)
+{
+	lcd_clear();
+	lcd_set_cursor(0, 0);
+	if (m->depth > 0) {
+		lcd_puts("^- ");
+	} else {
+		lcd_puts("   ");
+	}
+	lcd_puts(m->stack[m->depth]->text);
+	lcd_set_cursor(0, 1);
+	lcd_puts("< ");
+	lcd_puts((char *)m->current->text);
+	lcd_set_cursor(LCD_COL_COUNT - 2, 1);
+	lcd_puts(" >");
+}
+
+static void __menu_set_idx(struct menu *m, uint8_t idx)
+{
+	m->current = &m->stack[m->depth]->menu.items[idx];
+	m->idx[m->depth] = idx;
+}
+
+void menu_next(struct menu *m)
+{
+	uint8_t idx = m->idx[m->depth];
+
+	idx++;
+	if (idx == m->stack[m->depth]->menu.n_items) {
+		idx = 0;
+	}
+
+	__menu_set_idx(m, idx);
+}
+
+void menu_prev(struct menu *m)
+{
+	uint8_t idx = m->idx[m->depth];
+
+	idx--;
+	if (idx == (uint8_t)-1) {
+		idx = m->stack[m->depth]->menu.n_items - 1;
+	}
+
+	__menu_set_idx(m, idx);
+}
+
+static void __menu_push(struct menu *m)
+{
+	m->depth++;
+	m->stack[m->depth] = m->current;
+
+	__menu_set_idx(m, 0);
+}
+
+static void __menu_pop(struct menu *m)
+{
+	if (m->depth == 0) {
+		return;
+	}
+
+	m->depth--;
+	__menu_set_idx(m, m->idx[m->depth]);
+}
+
+void menu_select(struct menu *m)
+{
+	if (m->current->type == MENU_TYPE_MENU) {
+		__menu_push(m);
+	} else {
+		// Enter edit
+	}
+}
+
+void menu_up(struct menu *m)
+{
+	__menu_pop(m);
+}
+
 int main(void) {
+	struct menu m;
+	char btn;
 	DDRB = 1 << 5;
 	STEPPER_DDR |= (1 << STEPPER_DIR) | (1 << STEPPER_STEP);
 
@@ -201,6 +418,27 @@ int main(void) {
 	speed_cntr_Init_Timer1();
 	sei();
 
+	menu_init(&m, &menu_start);
+	menu_show(&m);
+	while (1) {
+		btn = get_button();
+		if (btn == LEFT) {
+			menu_prev(&m);
+		} else if (btn == RIGHT) {
+			menu_next(&m);
+		} else if (btn == SELECT) {
+			menu_select(&m);
+		} else if (btn == UP) {
+			menu_up(&m);
+		}
+
+		if (btn != NONE) {
+			menu_show(&m);
+		}
+
+		_delay_ms(300);
+	}
+#if 0
 #define UM_PER_PRESS 10
 	long int i = 0;
 	char btn;
@@ -244,6 +482,7 @@ int main(void) {
 		}
 		_delay_ms(16);
 	}
+#endif
 
 	return 0;
 }
