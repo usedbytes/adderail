@@ -78,7 +78,7 @@ long um_to_crad(long um) {
 	return (um * (long)(3.14159 * 2 * 1000)) / ((long)UM_REV * 10);
 }
 
-void motor_step(long int count, char dir) {
+void motor_step(long int count, char dir, char async) {
 	static char old_dir = -1;
 	if (dir != old_dir) {
 		old_dir = dir;
@@ -89,7 +89,8 @@ void motor_step(long int count, char dir) {
 		}
 	}
 	speed_cntr_Move(count, um_to_crad(accel), um_to_crad(accel), um_to_crad(speed));
-	while(running);
+
+	while(!async && running);
 }
 
 void adc_init(void)
@@ -128,7 +129,7 @@ static char get_button(void) {
 	}
 }
 
-static void move_um(long int um) {
+static void move_um(long int um, char async) {
 	static char old_dir = -1;
 	long int steps;
 	char dir = 0;
@@ -148,7 +149,7 @@ static void move_um(long int um) {
 
 	steps = (um * 1000) / NM_PER_STEP;
 
-	motor_step(steps, dir);
+	motor_step(steps, dir, async);
 }
 
 char hex(uint8_t nibble) {
@@ -213,6 +214,7 @@ struct rail rail = {
 enum menu_item_type {
 	MENU_TYPE_MENU,
 	MENU_TYPE_U32,
+	MENU_TYPE_TASK,
 };
 
 enum unit {
@@ -239,6 +241,7 @@ struct menu_item {
 	union {
 		struct menu_item_menu menu;
 		struct menu_item_u32 u32;
+		struct task *task;
 	};
 };
 
@@ -267,10 +270,103 @@ struct menu_item settings_menu[] = {
 	},
 };
 
+struct stack {
+	int32_t step_dist;
+	uint32_t pause_ms;
+	uint16_t n_steps;
+};
+
+struct stack_task {
+	void (*tick)(struct task *t);
+	struct stack s;
+
+	uint16_t n_steps;
+	uint32_t pause_ms;
+	uint8_t status;
+};
+
+static void stack_tick(struct task *t);
+struct stack_task stack_task = {
+	.tick = stack_tick,
+	.s = {
+		.step_dist = 10000,
+		.pause_ms = 1000,
+		.n_steps = 10,
+	},
+};
+
+struct menu_task menu_task;
+static void stack_tick(struct task *t)
+{
+#define STACK_START    0
+#define STACK_MOVE     1
+#define STACK_RUNNING  2
+#define STACK_PAUSE    3
+#define STACK_FINISHED 4
+	struct stack_task *st = (struct stack_task *)t;
+	static uint8_t cooldown = 250;
+
+	if (cooldown) {
+		cooldown--;
+	} else {
+		char btn = get_button();
+		if (btn == SELECT) {
+			if (st->status & 0x80) {
+				/* Resume */
+				st->status &= ~0x80;
+			} else {
+				st->status |= 0x80;
+			}
+			cooldown = 250;
+		} else if (btn != NONE) {
+			/* Abort on button press other than SELECT */
+			st->status = STACK_FINISHED;
+		}
+	}
+
+	switch (st->status) {
+	case STACK_START:
+		st->n_steps = st->s.n_steps;
+		/* Fallthrough */
+	case STACK_MOVE:
+		move_um(st->s.step_dist, 1);
+		st->status = STACK_RUNNING;
+		break;
+	case STACK_RUNNING:
+		if (running) {
+			break;
+		}
+		st->n_steps--;
+		if (!st->n_steps) {
+			st->status = STACK_FINISHED;
+			break;
+		}
+
+		st->pause_ms = st->s.pause_ms;
+		st->status = STACK_PAUSE;
+		break;
+	case STACK_PAUSE:
+		if (st->pause_ms--) {
+			break;
+		} else {
+			st->status = STACK_MOVE;
+		}
+		break;
+	case STACK_FINISHED:
+		st->status = STACK_START;
+		cooldown = 250;
+		current = &menu_task;
+		break;
+	default:
+		break;
+	}
+};
+
 struct menu_item stack_menu[] = {
 	{
 		.text = "Run",
-		.type = MENU_TYPE_U32,
+		.type = MENU_TYPE_TASK,
+		.task = &stack_task,
 	},
 	{
 		.text = "# Steps",
@@ -401,8 +497,8 @@ void menu_select(struct menu *m)
 {
 	if (m->current->type == MENU_TYPE_MENU) {
 		__menu_push(m);
-	} else {
-		// Enter edit
+	} else if (m->current->type == MENU_TYPE_TASK) {
+		current = m->current->task;
 	}
 }
 
