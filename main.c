@@ -15,6 +15,7 @@
  */
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/sleep.h>
 #include <util/delay.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -58,6 +59,17 @@
 #define MAX_ACCEL (long)((long)(UM_REV) * 20)
 
 #define ARRAY_SIZE(_x) (sizeof(_x) / sizeof((_x)[0]))
+
+struct task {
+	void (*tick)(struct task *);
+};
+
+struct task *current;
+
+ISR(TIMER0_COMPA_vect)
+{
+	current->tick(current);
+}
 
 long speed = MAX_SPEED;
 long accel = MAX_ACCEL;
@@ -399,16 +411,50 @@ void menu_up(struct menu *m)
 	__menu_pop(m);
 }
 
-int main(void) {
+struct menu_task {
+	void (*tick)(struct task *);
 	struct menu m;
+};
+
+static void menu_tick(struct task *t);
+struct menu_task menu_task = {
+	.tick = menu_tick,
+};
+
+static void menu_tick(struct task *t)
+{
+	struct menu_task *mt = (struct menu_task *)t;
+	static uint8_t cooldown = 0;
 	char btn;
+
+	if (cooldown) {
+		cooldown--;
+		return;
+	}
+
+	btn = get_button();
+	if (btn == LEFT) {
+		menu_prev(&mt->m);
+	} else if (btn == RIGHT) {
+		menu_next(&mt->m);
+	} else if (btn == SELECT) {
+		menu_select(&mt->m);
+	} else if (btn == UP) {
+		menu_up(&mt->m);
+	}
+
+	if (btn != NONE) {
+		menu_show(&mt->m);
+		cooldown = 250;
+	}
+}
+
+int main(void) {
 	DDRB = 1 << 5;
 	STEPPER_DDR |= (1 << STEPPER_DIR) | (1 << STEPPER_STEP);
 
 	lcd_init();
 	lcd_on();
-	lcd_clear();
-	lcd_puts("Hello, World!");
 
 	adc_init();
 
@@ -418,25 +464,18 @@ int main(void) {
 	speed_cntr_Init_Timer1();
 	sei();
 
-	menu_init(&m, &menu_start);
-	menu_show(&m);
+	menu_init(&menu_task.m, &menu_start);
+	menu_show(&menu_task.m);
+
+	current = &menu_task;
+	/* Prescale 1024, count 16 is 0.001024 seconds */
+	OCR0A = 16;
+	TCCR0A = (2 << WGM00);
+	TCCR0B = (5 << CS00);
+	TIMSK0 = (1 << OCIE0A);
+
 	while (1) {
-		btn = get_button();
-		if (btn == LEFT) {
-			menu_prev(&m);
-		} else if (btn == RIGHT) {
-			menu_next(&m);
-		} else if (btn == SELECT) {
-			menu_select(&m);
-		} else if (btn == UP) {
-			menu_up(&m);
-		}
-
-		if (btn != NONE) {
-			menu_show(&m);
-		}
-
-		_delay_ms(300);
+		sleep_enable();
 	}
 #if 0
 #define UM_PER_PRESS 10
