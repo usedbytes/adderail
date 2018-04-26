@@ -289,48 +289,105 @@ static void stack_tick(struct task *t);
 struct stack_task stack_task = {
 	.tick = stack_tick,
 	.s = {
-		.step_dist = 10000,
+		.step_dist = 2000,
 		.pause_ms = 1000,
-		.n_steps = 10,
+		.n_steps = 3,
 	},
 };
 
+#define MENU_MAX_DEPTH 4
+
+struct menu {
+	struct menu_item *stack[MENU_MAX_DEPTH];
+	struct menu_item *current;
+	uint8_t idx[MENU_MAX_DEPTH];
+	uint8_t depth;
+};
+
+struct menu_task {
+	void (*tick)(struct task *);
+	struct menu m;
+};
+
 struct menu_task menu_task;
+void menu_show(struct menu *m);
 static void stack_tick(struct task *t)
 {
 #define STACK_START    0
 #define STACK_MOVE     1
 #define STACK_RUNNING  2
 #define STACK_PAUSE    3
-#define STACK_FINISHED 4
+#define STACK_WAITKEY  4
 	struct stack_task *st = (struct stack_task *)t;
 	static uint8_t cooldown = 250;
+	char btn = NONE;
 
 	if (cooldown) {
 		cooldown--;
 	} else {
-		char btn = get_button();
-		if (btn == SELECT) {
-			if (st->status & 0x80) {
-				/* Resume */
-				st->status &= ~0x80;
-			} else {
-				st->status |= 0x80;
-			}
-			cooldown = 250;
-		} else if (btn != NONE) {
-			/* Abort on button press other than SELECT */
-			st->status = STACK_FINISHED;
+		btn = get_button();
+	}
+
+	if (st->status == STACK_WAITKEY && btn != NONE)
+	{
+		/* Cooldown for the next time we enter. Hack! */
+		cooldown = 250;
+		st->status = STACK_START;
+		current = &menu_task;
+		menu_show(&menu_task.m);
+		return;
+	}
+
+	if (btn == SELECT) {
+		if (st->status & 0x80) {
+			/* Resume */
+			st->status &= ~0x80;
+
+			lcd_clear();
+			lcd_set_cursor(0, 0);
+			lcd_printf("Stack Running");
+			lcd_set_cursor(0, 1);
+			lcd_printf("%4d Steps left", st->n_steps);
+		} else {
+			st->status |= 0x80;
+
+			lcd_clear();
+			lcd_set_cursor(0, 0);
+			lcd_printf("Stack Paused");
+			lcd_set_cursor(0, 1);
+			lcd_printf("SELECT to resume");
 		}
+		cooldown = 250;
+	} else if (btn != NONE) {
+		/* Abort on button press other than SELECT */
+		lcd_clear();
+		lcd_set_cursor(0, 0);
+		lcd_printf("Stack Aborted");
+		lcd_set_cursor(0, 1);
+		lcd_printf("Any key to exit");
+
+		st->status = STACK_WAITKEY;
+		cooldown = 250;
+		return;
 	}
 
 	switch (st->status) {
 	case STACK_START:
 		st->n_steps = st->s.n_steps;
-		/* Fallthrough */
+
+		lcd_clear();
+		lcd_set_cursor(0, 0);
+		lcd_printf("Stack Running");
+		lcd_set_cursor(0, 1);
+		lcd_printf("%4d Steps left", st->n_steps);
+
+		st->pause_ms = st->s.pause_ms;
+		st->status = STACK_PAUSE;
+		break;
 	case STACK_MOVE:
 		move_um(st->s.step_dist, 1);
 		st->status = STACK_RUNNING;
+
 		break;
 	case STACK_RUNNING:
 		if (running) {
@@ -338,12 +395,21 @@ static void stack_tick(struct task *t)
 		}
 		st->n_steps--;
 		if (!st->n_steps) {
-			st->status = STACK_FINISHED;
+			st->status = STACK_WAITKEY;
+
+			lcd_clear();
+			lcd_set_cursor(0, 0);
+			lcd_printf("Stack Finished");
+			lcd_set_cursor(0, 1);
+			lcd_printf("Any key to exit");
 			break;
 		}
 
 		st->pause_ms = st->s.pause_ms;
 		st->status = STACK_PAUSE;
+
+		lcd_set_cursor(0, 1);
+		lcd_printf("%4d", st->n_steps);
 		break;
 	case STACK_PAUSE:
 		if (st->pause_ms--) {
@@ -351,11 +417,6 @@ static void stack_tick(struct task *t)
 		} else {
 			st->status = STACK_MOVE;
 		}
-		break;
-	case STACK_FINISHED:
-		st->status = STACK_START;
-		cooldown = 250;
-		current = &menu_task;
 		break;
 	default:
 		break;
@@ -408,15 +469,6 @@ struct menu_item menu_start = {
 		.n_items = ARRAY_SIZE(main_menu),
 		.items = main_menu,
 	},
-};
-
-#define MENU_MAX_DEPTH 4
-
-struct menu {
-	struct menu_item *stack[MENU_MAX_DEPTH];
-	struct menu_item *current;
-	uint8_t idx[MENU_MAX_DEPTH];
-	uint8_t depth;
 };
 
 void menu_init(struct menu *m, struct menu_item *entry)
@@ -506,11 +558,6 @@ void menu_up(struct menu *m)
 {
 	__menu_pop(m);
 }
-
-struct menu_task {
-	void (*tick)(struct task *);
-	struct menu m;
-};
 
 static void menu_tick(struct task *t);
 struct menu_task menu_task = {
