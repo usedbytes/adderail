@@ -328,7 +328,7 @@ static void stack_tick(struct task *t)
 		btn = get_button();
 	}
 
-	if (st->status == STACK_WAITKEY && btn != NONE)
+	if (st->status == STACK_WAITKEY)// && btn != NONE)
 	{
 		/* Cooldown for the next time we enter. Hack! */
 		cooldown = 250;
@@ -592,12 +592,30 @@ static void menu_tick(struct task *t)
 	}
 }
 
+static void process_cmd(const char *cmd)
+{
+	uint8_t i = 10;
+	const uint8_t *c = (uint8_t *)cmd;
+	uint8_t *s = (uint8_t *)&stack_task.s;
+
+	c = (uint8_t *)cmd;
+	while (i--) {
+		*s = *c;
+		s++;
+		c++;
+	}
+
+	current = &stack_task;
+}
+
 int main(void) {
 	DDRB = 1 << 5;
 	STEPPER_DDR |= (1 << STEPPER_DIR) | (1 << STEPPER_STEP);
 
 	lcd_init();
 	lcd_on();
+	lcd_clear();
+	lcd_set_cursor(0, 0);
 
 	adc_init();
 
@@ -617,8 +635,22 @@ int main(void) {
 	TCCR0B = (5 << CS00);
 	TIMSK0 = (1 << OCIE0A);
 
+	char *cmd;
+
 	while (1) {
-		sleep_enable();
+		//sleep_enable();
+		cmd = uart_poll();
+		if (cmd) {
+			/*
+			lcd_clear();
+			lcd_set_cursor(0, 0);
+			char i;
+			for (i = 0; i < 12; i++) {
+				lcd_printf("%2x", cmd[i]);
+			}
+			*/
+			process_cmd(cmd);
+		}
 	}
 #if 0
 #define UM_PER_PRESS 10
